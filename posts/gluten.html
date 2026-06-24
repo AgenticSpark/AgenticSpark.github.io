@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Apache Gluten · offloading Spark SQL to native engines — Ethan</title>
+  <meta name="description" content="Apache Gluten is the middle layer that offloads Spark SQL execution to native engines like Velox and ClickHouse — Substrait plans over JNI, columnar shuffle, and a per-operator fallback to vanilla Spark. What's inside, and where it bites." />
+  <link rel="canonical" href="https://agenticspark.github.io/posts/gluten.html" />
+  <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Ethan" />
+  <meta property="og:title" content="Apache Gluten · offloading Spark SQL to native engines" />
+  <meta property="og:description" content="The plugin that glues native engines to Spark SQL — Substrait over JNI, columnar shuffle, and operator-level fallback — a STAR analysis." />
+  <meta property="og:url" content="https://agenticspark.github.io/posts/gluten.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Apache Gluten · offloading Spark SQL to native engines" />
+  <meta name="twitter:description" content="Keep Spark's control flow, replace its per-operator compute with Velox or ClickHouse." />
+  <link rel="icon" type="image/svg+xml" href="../assets/img/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../assets/css/site.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="inner">
+      <a href="../" class="brand">Ethan</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="../blog.html">Blog</a>
+        <a href="../about.html">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="reading wide">
+    <p class="back-link"><a href="../blog.html">← Blog</a></p>
+
+    <article class="post explainer">
+      <header class="post-head">
+        <span class="eyebrow">Spark acceleration · STAR analysis</span>
+        <h1 class="post-title">Apache Gluten</h1>
+        <p class="post-dek">Apache Spark stopped getting much faster at the operator level years ago — its JVM, row-shaped engine has a ceiling. Meanwhile, native vectorized engines like <a href="./velox.html">Velox</a> and ClickHouse are several times faster, but they can't speak Spark SQL. Gluten — Latin for "glue" — bridges exactly that gap: it keeps Spark's planner, scheduler, and distributed control flow intact, and offloads the compute-heavy parts of each query to a native engine. Your DataFrame and SQL code don't change; you add a plugin and some config. The honest part is the fallback: when an operator isn't supported natively, Gluten quietly hands it back to vanilla Spark. Here's how the glue works, and where it shows.</p>
+      </header>
+
+      <dl class="meta-grid">
+        <div><dt>Repo</dt><dd><a href="https://github.com/apache/gluten" target="_blank" rel="noopener">apache/<wbr>gluten</a></dd></div>
+        <div><dt>License</dt><dd>Apache-2.0</dd></div>
+        <div><dt>Stack</dt><dd>Scala · C++ · Substrait · JNI · Arrow</dd></div>
+        <div><dt>Version</dt><dd>v1.6.0 · Apache TLP</dd></div>
+        <div><dt>Stars</dt><dd>~1.6K · 619 forks</dd></div>
+        <div><dt>Reviewed</dt><dd>Jun 2026</dd></div>
+      </dl>
+
+      <div class="prose">
+        <h2>In short</h2>
+        <p>One idea — reuse Spark's control flow, replace its per-operator compute with a native engine — and a fallback path that makes the whole thing safe to switch on.</p>
+        <div class="callout-grid">
+          <div class="callout">
+            <h4>What it is</h4>
+            <p>A Spark plugin (<code>spark.plugins=org.apache.gluten.GlutenPlugin</code>) that translates Spark's physical plan into a <a href="https://substrait.io/" target="_blank" rel="noopener">Substrait</a> plan, ships it over JNI to a native backend (<a href="./velox.html">Velox</a> or ClickHouse), executes there on Arrow-format columnar batches, and returns results through Spark's Columnar API. No changes to your DataFrame API or SQL — just configuration. Apache top-level project since March 2026.</p>
+          </div>
+          <div class="callout">
+            <h4>Why it's interesting</h4>
+            <p>It is the lowest-risk way to make existing Spark faster. You don't migrate off Spark, rewrite jobs, or give up the ecosystem (scheduler, shuffle service, YARN/K8s, the catalog). You keep all of it and swap the inner loop. The reported wins are real — a 2.71× overall TPC-H speedup on the Velox backend — and an operator it can't handle simply falls back instead of failing.</p>
+          </div>
+          <div class="callout">
+            <h4>Biggest concerns</h4>
+            <p>Fallback is the double-edged sword: an unsupported operator triggers a columnar↔row conversion (C2R/R2C) that can erase the speedup and occasionally make a query <em>slower</em> than vanilla Spark. It needs off-heap memory tuning, a matching backend build, and version-specific shims. The published benchmarks are from 2023; coverage and gains vary sharply by workload.</p>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat"><span class="num">2.71×</span><span class="label">Velox backend · TPC-H (2023)</span></div>
+          <div class="stat"><span class="num">14.5×</span><span class="label">Best single query</span></div>
+          <div class="stat"><span class="num">2</span><span class="label">Backends — Velox · ClickHouse</span></div>
+          <div class="stat"><span class="num">5</span><span class="label">Spark versions (3.3–4.1)</span></div>
+          <div class="stat"><span class="num">TLP</span><span class="label">Apache top-level · Mar 2026</span></div>
+        </div>
+
+        <div class="callout accent">
+          <h4>Verdict</h4>
+          <p>The most pragmatic Spark accelerator of 2026: keep everything you already run, switch on a plugin, and let a native engine do the heavy lifting — with a fallback that means a worst case of "no faster than before" rather than "broken." Worth a serious pilot for SQL/DataFrame batch ETL where the operators are well-supported (scans, filters, projects, joins, aggregations on standard types). The two things to verify before trusting it in production: how much of <em>your</em> plan actually runs natively (watch for fallback in the Spark UI), and whether off-heap memory is sized correctly. Treat the 2.71× headline as a workload-dependent ceiling, not a guarantee — and remember the speed ultimately comes from the backend, so read the <a href="./velox.html">Velox</a> writeup alongside this one.</p>
+        </div>
+
+        <h2>1 · Situation — Spark's per-operator ceiling</h2>
+        <p>Spark's performance story has a clear inflection point, and Gluten lives just past it.</p>
+        <p>Apache Spark spent a decade getting faster. The big leap came in Spark 2.0, when Whole-Stage Code Generation replaced the old Volcano interpreter and delivered up to a 2× speedup by compiling whole query stages into tight JVM bytecode. After that, most improvements moved <em>up</em> the stack — to the query planner, adaptive execution, cost-based optimization — while the performance of the individual physical operators (the scans, filters, joins, aggregations doing the actual byte-crunching) largely plateaued. The JVM, row-at-a-time execution, garbage collection, and the inability to fully exploit SIMD set a ceiling that planner cleverness can't lift.</p>
+        <p>At the same time, a generation of native SQL engines grew up specifically to crush that ceiling: ClickHouse, and Meta's <a href="./velox.html">Velox</a>, with native execution, columnar data formats, and vectorized, SIMD-accelerated processing. On raw operator throughput they beat Spark's JVM engine handily. The catch is the one the Gluten README states plainly: these engines "currently don't directly support Spark SQL execution." They have no Catalyst, no Spark Connect, no understanding of Spark's plan format, partitioning, or shuffle. They're fast strangers to the Spark ecosystem.</p>
+        <p>So there are two unsatisfying options. Stay on pure Spark and accept the operator ceiling. Or leave Spark entirely for a native engine and give up the scheduler, the shuffle service, the catalog integrations, YARN/Kubernetes deployment, and a decade of operational muscle memory. Gluten exists to refuse that dichotomy.</p>
+        <div class="callout-grid">
+          <div class="callout">
+            <h4>Vanilla Spark — the ceiling</h4>
+            <p>JVM, row-oriented operators, GC. Whole-Stage Codegen was the last big operator leap; per-operator speed then plateaued.</p>
+          </div>
+          <div class="callout">
+            <h4>Native engines — fast strangers</h4>
+            <p>Velox / ClickHouse are vectorized and several times faster — but they can't read a Spark plan or join the Spark ecosystem on their own.</p>
+          </div>
+          <div class="callout">
+            <h4>Leave Spark entirely</h4>
+            <p>Adopt a native engine wholesale and lose the scheduler, shuffle, catalog, and deployment story you already depend on. High switching cost.</p>
+          </div>
+          <div class="callout">
+            <h4>Gluten — keep Spark, swap the compute</h4>
+            <p>apache/gluten (Apache TLP, Scala + C++) — reuse Spark's control flow, offload the operators to a native backend. The subject of this report.</p>
+          </div>
+        </div>
+
+        <h2>2 · Task — glue, not replacement</h2>
+        <p>Gluten's design principle is a single sentence with large consequences: reuse Spark's control flow, offload compute-intensive data processing to the native side.</p>
+        <p>"Gluten" is Latin for glue, and the name is the spec. The goal is to glue native engines to Spark SQL so you get the native engine's speed <em>and</em> Spark's scalability and ecosystem. Concretely, the project commits to:</p>
+        <ol>
+          <li><strong>Transform</strong> Spark's physical plan into a Substrait plan, then into the native engine's plan.</li>
+          <li><strong>Offload</strong> performance-critical data processing to the native engine.</li>
+          <li><strong>Define</strong> clean JNI interfaces between the JVM and native side.</li>
+          <li><strong>Switch</strong> easily between available native backends (Velox, ClickHouse).</li>
+          <li><strong>Reuse</strong> Spark's distributed control flow — scheduling, shuffle orchestration, fault tolerance.</li>
+          <li><strong>Manage</strong> data sharing between JVM and native memory.</li>
+          <li><strong>Fall back</strong> to vanilla Spark for anything the native engine can't do.</li>
+        </ol>
+        <p>The crucial framing — the thing that makes Gluten adoptable — is what stays untouched. As a plugin to Spark, Gluten requires no changes to the DataFrame API or SQL queries; users only need to configure it correctly. The driver still plans with Catalyst, the scheduler still assigns tasks, the shuffle service still moves data between stages. Gluten intercepts only the leaf of the system: the per-task operator execution. That's the whole bet — that you can replace the inner loop while leaving the entire machine around it in place.</p>
+
+        <h2>3 · Action — what's actually in the plugin</h2>
+        <p>Eight lenses: the offload flow, Substrait, the fallback mechanism, columnar shuffle, memory, the backends and shims, performance, and project health.</p>
+
+        <h3>3.1 The offload flow — plan in, ColumnarBatch out</h3>
+        <p>The core path, from a planned Spark query to native execution and back:</p>
+        <figure class="diagram"><svg viewBox="0 0 760 232" role="img" xmlns="http://www.w3.org/2000/svg"><defs><marker id="ahglu" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="d-arrow"/></marker><marker id="aaglu" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="d-arrow-accent"/></marker></defs><text x="380" y="20" text-anchor="middle" class="d-eyebrow">Transform Spark's plan to Substrait, offload across JNI, return Arrow batches</text><rect x="36" y="46" width="190" height="54" rx="8" class="d-box"/><text x="131" y="70" text-anchor="middle" class="d-title">Spark physical plan</text><text x="131" y="88" text-anchor="middle" class="d-sub">Catalyst (JVM)</text><rect x="285" y="46" width="190" height="54" rx="8" class="d-box"/><text x="380" y="70" text-anchor="middle" class="d-title">Substrait plan</text><text x="380" y="88" text-anchor="middle" class="d-sub">engine-neutral IR</text><rect x="534" y="46" width="190" height="54" rx="8" class="d-box-accent"/><text x="629" y="70" text-anchor="middle" class="d-title">Velox / ClickHouse</text><text x="629" y="88" text-anchor="middle" class="d-sub">native operators</text><line x1="226" y1="73" x2="285" y2="73" class="d-edge" marker-end="url(#ahglu)"/><line x1="475" y1="73" x2="534" y2="73" class="d-edge-accent" marker-end="url(#aaglu)"/><text x="504" y="38" text-anchor="middle" class="d-elabel">JNI</text><line x1="504" y1="30" x2="504" y2="170" class="d-edge" stroke-dasharray="5 4"/><text x="450" y="158" text-anchor="middle" class="d-sub">JVM side</text><text x="560" y="158" text-anchor="middle" class="d-sub">native side</text><rect x="285" y="172" width="190" height="46" rx="8" class="d-box"/><text x="380" y="194" text-anchor="middle" class="d-title">ColumnarBatch</text><text x="380" y="210" text-anchor="middle" class="d-sub">Arrow · Spark Columnar API</text><line x1="629" y1="100" x2="475" y2="186" class="d-edge-accent" marker-end="url(#aaglu)"/></svg><figcaption><b>Keep the control flow, swap the compute.</b> Spark plans the query as usual; Gluten rewrites the physical plan to an engine-neutral <a href="https://substrait.io/" target="_blank" rel="noopener">Substrait</a> plan, ships it over JNI to a native backend, and that backend executes on Arrow-format columnar batches. Results come back as a <code>ColumnarBatch</code> consumed by Spark's Columnar API (introduced in Spark 3.0) — so the surrounding scheduler and shuffle never know the difference.</figcaption></figure>
+        <p>The key components Gluten adds to make this work, per the README: <strong>Query Plan Conversion</strong> (Spark plan → Substrait), <strong>Unified Memory Management</strong> (native allocation under Spark's memory budget), <strong>Columnar Shuffle</strong> (a columnar exchange operator reusing Spark's shuffle service), the <strong>Fallback Mechanism</strong> (C2R/R2C), <strong>Metrics</strong> (native counters surfaced in the Spark UI), and a <strong>Shim Layer</strong> for cross-version compatibility. Gluten adopts the Apache Arrow format as its underlying representation throughout.</p>
+
+        <h3>3.2 Substrait — the engine-neutral lingua franca</h3>
+        <p>The clever decoupling is Substrait, a cross-language specification for relational operations. Rather than translate Spark's plan directly into Velox's plan format <em>and</em> ClickHouse's plan format (an N×M problem), Gluten translates Spark's physical plan once into Substrait, and each backend translates Substrait into its own native plan. Substrait is the narrow waist: add a backend by teaching it to read Substrait, not by re-deriving the Spark plan from scratch. This is exactly why "switch easily between available native backends" is a realistic design goal rather than a slogan — the JVM-side conversion is shared, and only the thin Substrait-to-native step differs per engine.</p>
+
+        <h3>3.3 The fallback mechanism — the honest, load-bearing part</h3>
+        <p>No native engine implements every Spark operator, expression, data type, and edge case. Gluten's answer is not to fail — it is to fall back. If an operator isn't supported on the native side, that node runs on vanilla Spark instead, and Gluten inserts conversions at the boundary: <strong>ColumnarToRow (C2R)</strong> when leaving the native columnar world for Spark's row format, and <strong>RowToColumnar (R2C)</strong> coming back.</p>
+        <figure class="diagram"><svg viewBox="0 0 760 344" role="img" xmlns="http://www.w3.org/2000/svg"><defs><marker id="ahglu2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="d-arrow"/></marker><marker id="aaglu2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="d-arrow-accent"/></marker></defs><text x="380" y="18" text-anchor="middle" class="d-eyebrow">One plan, two worlds — native where supported, Spark where not (execution flows upward)</text><rect x="240" y="40" width="280" height="44" rx="8" class="d-box"/><text x="380" y="67" text-anchor="middle" class="d-title">HashAggregate — native columnar</text><rect x="300" y="108" width="160" height="32" rx="6" class="d-box-accent"/><text x="380" y="128" text-anchor="middle" class="d-sub">RowToColumnar (R2C)</text><rect x="240" y="164" width="280" height="44" rx="8" class="d-box-2"/><text x="380" y="191" text-anchor="middle" class="d-title">Python UDF — vanilla Spark (row)</text><rect x="300" y="232" width="160" height="32" rx="6" class="d-box-accent"/><text x="380" y="252" text-anchor="middle" class="d-sub">ColumnarToRow (C2R)</text><rect x="240" y="288" width="280" height="44" rx="8" class="d-box"/><text x="380" y="315" text-anchor="middle" class="d-title">Scan + Filter — native columnar</text><line x1="380" y1="288" x2="380" y2="266" class="d-edge" marker-end="url(#ahglu2)"/><line x1="380" y1="232" x2="380" y2="210" class="d-edge-accent" marker-end="url(#aaglu2)"/><line x1="380" y1="164" x2="380" y2="142" class="d-edge" marker-end="url(#ahglu2)"/><line x1="380" y1="108" x2="380" y2="86" class="d-edge-accent" marker-end="url(#aaglu2)"/><text x="110" y="66" text-anchor="middle" class="d-elabel">native</text><text x="110" y="190" text-anchor="middle" class="d-elabel">fallback</text><text x="110" y="314" text-anchor="middle" class="d-elabel">native</text><text x="650" y="128" text-anchor="middle" class="d-elabel">each C2R / R2C</text><text x="650" y="146" text-anchor="middle" class="d-elabel">copies + reshapes</text></svg><figcaption><b>Fallback, drawn.</b> A single query plan can be part native, part Spark. Scan, filter, and aggregation run on the native engine; an unsupported Python UDF runs on vanilla Spark, bracketed by C2R/R2C conversions. Correctness is guaranteed — but every conversion copies and reshapes data between columnar and row layouts, so a plan riddled with fallbacks can lose most of its speedup. Reading the Spark UI for these transitions is the single most useful Gluten skill.</figcaption></figure>
+        <p>This is what makes Gluten safe to switch on — a query is never broken by a missing native operator; worst case, parts of it run as they always did. But it's also the chief performance hazard. The C2R/R2C conversions aren't free: they materialize and reshape data between columnar and row representations, crossing the JNI boundary. A plan with one fallback in a cold corner is fine; a plan that ping-pongs between native and Spark on every other operator can be slower than turning Gluten off. The practical implication: adopting Gluten well is largely about <em>watching the fallbacks</em> and either rewriting the query, enabling more native coverage, or accepting the operator stays on Spark.</p>
+
+        <h3>3.4 Columnar shuffle — reusing Spark's service, in Arrow shape</h3>
+        <p>Shuffle is where Spark moves data between stages, and it's row-oriented by default. Gluten can't keep its columnar batches and also use Spark's row shuffle without converting on every exchange — so it implements a <strong>columnar shuffle</strong>: a columnar exchange operator that serializes Arrow batches, while <em>reusing</em> the Spark core shuffle service underneath for the actual transport, fault tolerance, and orchestration. You enable it by pointing Spark at <code>org.apache.spark.shuffle.sort.ColumnarShuffleManager</code>. It's a neat encapsulation of the whole philosophy: keep Spark's machinery (the shuffle service), replace only the data representation (columnar instead of rows).</p>
+
+        <h3>3.5 Unified memory management — off-heap is mandatory</h3>
+        <p>The native engine allocates outside the JVM heap, but it must still live within the memory budget Spark accounts for, or the two will fight and the executor will OOM. Gluten's Unified Memory Management bridges the two so native allocations are tracked against Spark's memory manager. In practice this is why the canonical config turns on off-heap memory explicitly:</p>
+        <pre><code>--conf spark.plugins=org.apache.gluten.GlutenPlugin
+--conf spark.memory.offHeap.enabled=true
+--conf spark.memory.offHeap.size=20g
+--conf spark.shuffle.manager=org.apache.spark.shuffle.sort.ColumnarShuffleManager</code></pre>
+        <p>Sizing <code>offHeap.size</code> is the most common operational gotcha: too small and native operators spill or fail; too large and you starve the JVM side and the OS cache. It's the one tuning knob you can't skip.</p>
+
+        <h3>3.6 Backends and shims — Velox, ClickHouse, and five Spark versions</h3>
+        <p>Gluten currently supports two native backends. The <strong><a href="./velox.html">Velox</a></strong> backend (the default and most active, built from Meta's Velox library — covered in the companion post) and the <strong>ClickHouse</strong> backend (built from a Kyligence fork of ClickHouse). Because Substrait sits between Gluten and the backend, a query you write is backend-agnostic; you choose the engine at build/deploy time. On the Spark side, a <strong>Shim Layer</strong> absorbs API differences across releases: Gluten supports the latest three-to-four Spark releases at a time — currently 3.3, 3.4, 3.5, 4.0, and 4.1 — which matters because Spark's internal physical-plan APIs are not stable across versions.</p>
+
+        <h3>3.7 Performance — real gains, dated and workload-shaped</h3>
+        <p>The README's headline numbers come from TPC-H. The <a href="./velox.html">Velox</a> backend showed an overall 2.71× speedup with up to 14.53× on a single query; the ClickHouse backend showed an average 2.12× with up to 3.48×. Read those with three honest caveats the project itself signals:</p>
+        <ul>
+          <li><strong>They're dated.</strong> The Velox-backend numbers are from a June 2023 test (single node, 2&nbsp;TB, Spark 3.3.2 baseline). The README explicitly notes results "do not reflect the latest performance" — they may well be better now, but the figure isn't current.</li>
+          <li><strong>"2.71×" is an average over a wide spread.</strong> A 14.53× best query and a 2.71× geomean mean some queries fly and some barely move — exactly the queries with heavy fallback or unsupported types.</li>
+          <li><strong>It's TPC-H.</strong> A clean analytical benchmark with well-supported operators is Gluten's best case. Real workloads with UDFs, exotic types, or unusual functions see more fallback and smaller gains.</li>
+        </ul>
+        <p>None of this makes the numbers wrong — a 2.71× speedup on existing Spark hardware with no query rewrite is an excellent result. It means the honest expectation is "meaningfully faster on well-supported SQL/DataFrame batch work, with the exact multiple depending on how much of your plan runs native."</p>
+
+        <h3>3.8 Project health — a graduated Apache project, broadly backed</h3>
+        <p>Gluten's trajectory is a real signal. Initiated by Intel and Kyligence in 2022, it entered the Apache Incubator in March 2024 and <em>graduated to an Apache Top-Level Project in March 2026</em> — the ASF's stamp that the community and governance are healthy. Contributors span BIGO, Meituan, Alibaba Cloud, NetEase, Baidu, Microsoft, IBM, and Google. The codebase reflects its bridging role: majority Scala (the Spark-side plugin) plus substantial C++ (the backend glue), with a tagged release line (v1.6.0, March 2026) — notably more release discipline than the Velox library it sits on. The ~950 open issues are the texture of an active accelerator chasing Spark-operator coverage, which is precisely the long tail that determines how often you hit fallback.</p>
+
+        <h2>4 · Result — what you get if you switch Gluten on</h2>
+        <p>Each promise mapped to its delivered state.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Promise</th><th>Delivered today</th><th>Honest grade</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>No code changes</td><td>Plugin + config; DataFrame/SQL untouched</td><td>Strong — genuinely drop-in</td></tr>
+              <tr><td>Faster execution</td><td>2.71× TPC-H (Velox, 2023); workload-dependent</td><td>Real, but varies sharply</td></tr>
+              <tr><td>Reuse Spark's ecosystem</td><td>Scheduler, shuffle service, catalog all kept</td><td>Strong — the core advantage</td></tr>
+              <tr><td>Switch backends</td><td>Velox + ClickHouse via Substrait</td><td>Real; Velox is the mature default</td></tr>
+              <tr><td>Safe on unsupported ops</td><td>Per-operator fallback to vanilla Spark</td><td>Correct always; can erode the speedup</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The win is leverage: you make an entire existing Spark estate faster without migrating it. No job rewrites, no new cluster manager, no retraining — a plugin and a memory config. For an organization with thousands of Spark jobs, that's a fundamentally different risk profile than adopting a new engine. And because the fallback guarantees correctness, the downside of "switch it on and measure" is bounded.</p>
+        <p>The caveats are operational, not conceptual. You must size off-heap memory deliberately. You must match a Gluten build to your Spark version and chosen backend. And you must actually look at how much of your plans run natively — a workload heavy in UDFs, unusual data types, or unsupported functions will fall back often enough that the gains shrink or vanish. Gluten gives you the speed of <a href="./velox.html">Velox</a> only to the extent your queries reach Velox; the glue is excellent, but it can't offload what the backend doesn't implement.</p>
+
+        <h2>5 · Takeaways — how to read Gluten in 2026</h2>
+        <p>Five calibrated conclusions for an engineer evaluating it.</p>
+        <h4>It's the low-risk Spark accelerator</h4>
+        <p>Keep your jobs, scheduler, shuffle, and catalog; switch on a plugin; let a native engine do the compute. The architecture is conservative in the best sense — replace the inner loop, leave the machine.</p>
+        <h4>Fallback is the whole game</h4>
+        <p>How much you gain is how much of your plan runs native. Learn to read C2R/R2C transitions in the Spark UI; a fallback-heavy plan can underperform plain Spark.</p>
+        <h4>The speed is the backend's</h4>
+        <p>Gluten is the glue; <a href="./velox.html">Velox</a> (or ClickHouse) does the work. To understand <em>why</em> it's fast — vectors, encodings, vectorized operators — read the Velox writeup. Gluten's contribution is making that reachable from Spark.</p>
+        <h4>Off-heap memory is non-negotiable</h4>
+        <p>Native allocation lives outside the JVM heap and must be budgeted (<code>spark.memory.offHeap.size</code>). Mis-sizing it is the most common reason a Gluten pilot disappoints or fails.</p>
+        <h4>Pilot on well-supported batch SQL</h4>
+        <p>Best first bet: analytical SQL/DataFrame ETL on standard types — scans, filters, joins, aggregations. Worst first bet: UDF-heavy or exotic-type pipelines that fall back constantly. Measure your own plans, not TPC-H.</p>
+
+        <h2>6 · vs Alternatives</h2>
+        <p>Where Gluten sits in the 2026 "make Spark faster" landscape.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Option</th><th>What it is</th><th>Relative to Gluten</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Apache Gluten</td><td>Plugin offloading Spark SQL to Velox/ClickHouse via Substrait</td><td>This report. Drop-in, multi-backend, per-operator fallback</td></tr>
+              <tr><td>DataFusion Comet (Apple)</td><td>Spark accelerator backed by Rust DataFusion</td><td>Same idea, DataFusion/Rust backend; Gluten leans on Velox/ClickHouse and Substrait</td></tr>
+              <tr><td>Photon (Databricks)</td><td>Proprietary native engine inside Databricks Runtime</td><td>Fast but closed + platform-locked; Gluten is open and runs on your own Spark</td></tr>
+              <tr><td><a href="./sail.html">Sail</a></td><td>JVM-free Rust engine behind Spark Connect</td><td>Replaces Spark entirely; Gluten keeps the JVM driver and accelerates underneath</td></tr>
+              <tr><td>Vanilla Spark</td><td>The JVM baseline</td><td>The thing Gluten accelerates; no plugin, no off-heap tuning, lower ceiling</td></tr>
+              <tr><td><a href="./velox.html">Velox</a> / ClickHouse alone</td><td>The native engines themselves</td><td>Fast but can't speak Spark SQL; Gluten is the glue that lets Spark drive them</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <nav class="post-nav">
+        <a href="../blog.html">← All writing</a>
+        <a href="./velox.html">Velox →</a>
+      </nav>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="inner">
+      <span>© 2026 Ethan</span>
+      <span>built static · no framework</span>
+      <a href="https://github.com/AgenticSpark">github →</a>
+    </div>
+  </footer>
+  <script src="../assets/js/site.js"></script>
+</body>
+</html>

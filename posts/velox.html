@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Velox · the composable C++ execution engine — Ethan</title>
+  <meta name="description" content="Velox is Meta's open-source C++ execution engine library — Arrow-compatible vectors, a vectorized expression engine, and pull-based operator pipelines that now power Presto, Spark (via Gluten), and more. What's inside, and where it bites." />
+  <link rel="canonical" href="https://agenticspark.github.io/posts/velox.html" />
+  <meta name="theme-color" content="#faf9f5" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Ethan" />
+  <meta property="og:title" content="Velox · the composable C++ execution engine" />
+  <meta property="og:description" content="Meta's reusable C++ execution library — Arrow-compatible vectors, vectorized expressions, and operator pipelines that power Presto and Spark — a STAR analysis." />
+  <meta property="og:url" content="https://agenticspark.github.io/posts/velox.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Velox · the composable C++ execution engine" />
+  <meta name="twitter:description" content="The execution layer every analytics engine kept rewriting — factored out into one C++ library." />
+  <link rel="icon" type="image/svg+xml" href="../assets/img/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../assets/css/site.css" />
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="inner">
+      <a href="../" class="brand">Ethan</a>
+      <nav class="nav" aria-label="Primary">
+        <a href="../blog.html">Blog</a>
+        <a href="../about.html">About</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="reading wide">
+    <p class="back-link"><a href="../blog.html">← Blog</a></p>
+
+    <article class="post explainer">
+      <header class="post-head">
+        <span class="eyebrow">Native execution engines · STAR analysis</span>
+        <h1 class="post-title">Velox</h1>
+        <p class="post-dek">Every analytics system — Presto, Spark, every warehouse and stream processor — rebuilds the same execution layer: the columnar memory format, the vectorized expression evaluator, the hash join, the spilling aggregation. Velox is Meta's bet that you should write that layer <em>once</em>, as a reusable C++ library, and let engines plug it in. It is not a database: no SQL parser, no optimizer, no dataframe API. It takes a fully optimized plan and runs it, fast. That single decision is why Velox now sits underneath Presto (as Prestissimo) and Apache Spark (via <a href="./gluten.html">Gluten</a>), developed by Meta, IBM, Intel, Microsoft, ByteDance and others. Here is what's actually inside, and where a "just a library" promise gets complicated.</p>
+      </header>
+
+      <dl class="meta-grid">
+        <div><dt>Repo</dt><dd><a href="https://github.com/facebookincubator/velox" target="_blank" rel="noopener">facebookincubator/<wbr>velox</a></dd></div>
+        <div><dt>License</dt><dd>Apache-2.0</dd></div>
+        <div><dt>Stack</dt><dd>C++ · Arrow-compatible vectors · SIMD</dd></div>
+        <div><dt>Version</dt><dd>main · no tagged releases</dd></div>
+        <div><dt>Stars</dt><dd>~4.2K · 1.5K forks</dd></div>
+        <div><dt>Reviewed</dt><dd>Jun 2026</dd></div>
+      </dl>
+
+      <div class="prose">
+        <h2>In short</h2>
+        <p>One idea — factor the execution engine out of the database and ship it as a library — and an unusually broad coalition of companies building on top of it.</p>
+        <div class="callout-grid">
+          <div class="callout">
+            <h4>What it is</h4>
+            <p>An open-source C++ library of reusable, high-performance data-processing components: an Arrow-compatible <code>Vector</code> layer, a vectorized expression evaluator, relational <code>Operators</code> (scans, joins, aggregations, sorts), connectors for ORC/Parquet/Nimble and S3/HDFS/GCS, and resource management (memory arenas, spilling, caching). You feed it an already-planned query; it executes. Created by Meta, Apache-2.0.</p>
+          </div>
+          <div class="callout">
+            <h4>Why it's interesting</h4>
+            <p>It dissolves the boundary between "engines." The same operator code that runs a Presto query now runs a Spark SQL stage under Gluten — so a SIMD speedup or a join-spilling fix lands everywhere at once. Consistent semantics, consistent performance, one place to optimize. That consolidation is the real product, more than any single benchmark number.</p>
+          </div>
+          <div class="callout">
+            <h4>Biggest concerns</h4>
+            <p>It is a developer's library, not a user's tool: no SQL parser, optimizer, or dataframe layer, so you can't "run Velox" — you integrate it. It demands modern SIMD (<code>bmi</code>, <code>bmi2</code>, <code>f16c</code>), a C++ toolchain, and real systems expertise. There are no tagged releases — you build from a fast-moving <code>main</code> — and the surface area (1,500+ open issues) is large.</p>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat"><span class="num">4.2K</span><span class="label">Stars · 1.5K forks</span></div>
+          <div class="stat"><span class="num">3+</span><span class="label">Engines built on it</span></div>
+          <div class="stat"><span class="num">8</span><span class="label">Pluggable extension points</span></div>
+          <div class="stat"><span class="num">0</span><span class="label">Releases · build from main</span></div>
+          <div class="stat"><span class="num">2021</span><span class="label">Open-sourced by Meta</span></div>
+        </div>
+
+        <div class="callout accent">
+          <h4>Verdict</h4>
+          <p>One of the most consequential pieces of open-source data infrastructure of the decade — not because of a headline benchmark, but because it makes "the execution engine" a shared, reusable component instead of something every system reinvents. If you are integrating or accelerating an analytics engine in C++, Velox is the substrate to build on, and the partner list (Meta, IBM, Intel, Microsoft, ByteDance, Voltron Data) means it isn't a single-vendor risk. If you are an end user who just wants to run SQL, Velox is invisible plumbing — you'll meet it through Prestissimo or <a href="./gluten.html">Gluten</a>, never directly. Treat "build from main, no releases" and the SIMD requirement as the real costs of entry.</p>
+        </div>
+
+        <h2>1 · Situation — every engine rewrites the same layer</h2>
+        <p>By the early 2020s, the analytics landscape had a quiet duplication problem.</p>
+        <p>Look inside Presto, Spark, ClickHouse, a dozen cloud warehouses, and a handful of stream processors, and you find the same machinery rebuilt over and over: a columnar in-memory format, a vectorized expression evaluator, a hash-join implementation, a group-by that spills to disk under memory pressure, a set of scalar and aggregate functions, readers for Parquet and ORC, adapters for S3 and HDFS. Each system wrote its own version, in its own language, with its own bugs, its own performance cliffs, and its own subtly different semantics for what <code>NULL + 1</code> or an overflowing <code>SUM</code> should do.</p>
+        <p>That duplication is expensive twice over. It is expensive to <em>build</em> — every team re-implements vectorized joins from scratch. And it is expensive to <em>improve</em> — a clever SIMD decoding trick or a smarter spilling strategy has to be re-discovered and re-applied in every engine independently. The state of the art advances in one codebase and the others wait years to catch up.</p>
+        <p>Velox is Meta's answer: stop rewriting the engine. Meta ran several internal systems — Presto, Spark, an internal stream processor, ML feature-engineering pipelines — each with its own execution layer. Factoring that layer into a single, shared C++ library meant one place to fix bugs, one place to optimize, and — crucially — consistent behavior across products. Open-sourcing it in 2021 turned that internal consolidation into an industry one.</p>
+        <div class="callout-grid">
+          <div class="callout">
+            <h4>The old way — every engine its own</h4>
+            <p>Presto had its engine, Spark had Tungsten, ClickHouse had its own. Each re-implemented vectors, expressions, joins, spilling — with divergent semantics and divergent speed.</p>
+          </div>
+          <div class="callout">
+            <h4>The duplication tax</h4>
+            <p>A SIMD or spilling improvement helps one engine and stops there. The frontier moves in one codebase while the rest wait years to copy it.</p>
+          </div>
+          <div class="callout">
+            <h4>Velox — write it once</h4>
+            <p>One C++ library of execution components, reused across engines. Fix or optimize once; every consumer benefits. Consistent semantics by construction.</p>
+          </div>
+          <div class="callout">
+            <h4>The wager</h4>
+            <p>The risky bet: that execution is generic enough to share. The payoff is the partner list — Meta, IBM, Intel, Microsoft, ByteDance — all building on the same core.</p>
+          </div>
+        </div>
+
+        <h2>2 · Task — a library, deliberately not a database</h2>
+        <p>Velox's scope is defined as much by what it refuses to do as by what it does.</p>
+        <p>The README is unusually disciplined about the boundary: Velox "does not provide a SQL parser, a dataframe layer, or a query optimizer," and "is usually not meant to be used directly by end-users." It takes a <em>fully optimized query plan</em> as input and performs the described computation. Everything above the plan — parsing, binding, cost-based optimization, the user-facing API — stays the responsibility of the engine that embeds Velox.</p>
+        <p>That leaves a precise contract. The host engine (Presto, Spark, your own) parses and optimizes the query, then hands Velox a <code>PlanFragment</code>: a tree of operators with resolved types and expressions. Velox builds the operator pipeline, pulls data through it in vectorized batches, manages memory and spilling, and streams results back. The promise is fourfold:</p>
+        <ol>
+          <li><strong>Reusable</strong> — the same components serve batch, interactive, streaming, and AI/ML feature workloads.</li>
+          <li><strong>Extensible</strong> — engines plug in their own types, functions, operators, file formats, storage adapters, and wire serializers.</li>
+          <li><strong>High-performance</strong> — fully vectorized, SIMD-accelerated, with a memory model built for tight control and spilling.</li>
+          <li><strong>Consistent</strong> — function semantics follow Presto and Spark, so an engine can match its reference exactly.</li>
+        </ol>
+        <p>The thesis of this report: promises (1)–(3) are delivered and genuinely impressive; promise (4) is the subtle, load-bearing one — Velox ships <em>two</em> function namespaces (Presto and Spark semantics) precisely because "consistent" means "consistent with whichever engine you're impersonating," and getting that exactly right is most of the integration work.</p>
+
+        <h2>3 · Action — what's actually in the library</h2>
+        <p>Seven lenses: the component map, vectors, the expression engine, the operator/driver model, the many engines on top, extensibility, and project health.</p>
+
+        <h3>3.1 The shape — eight components, one shared object</h3>
+        <p>Velox is organized as a set of cooperating components, each individually reusable:</p>
+        <ul>
+          <li><strong>Type</strong> — a generic type system covering scalars and nested/complex types (structs, maps, arrays).</li>
+          <li><strong>Vector</strong> — the Arrow-compatible columnar memory module (detailed below).</li>
+          <li><strong>Expression Eval</strong> — a fully vectorized evaluator that runs expression trees over vectors.</li>
+          <li><strong>Functions</strong> — vectorized scalar, aggregate, and window functions, in Presto-semantic and Spark-semantic variants.</li>
+          <li><strong>Operators</strong> — scans, projections, filters, group-by, ordering, shuffle/exchange, and hash / merge / nested-loop joins, unnest, and more.</li>
+          <li><strong>I/O connectors</strong> — file formats (ORC/DWRF, Parquet, Meta's Nimble) and storage adapters (S3, HDFS, GCS, ABFS, local).</li>
+          <li><strong>Network Serializers</strong> — pluggable wire protocols, including PrestoPage and Spark's UnsafeRow.</li>
+          <li><strong>Resource Management</strong> — memory arenas, buffer management, tasks/drivers, CPU and IO thread pools, spilling, and caching.</li>
+        </ul>
+        <p>The point of the decomposition is that you don't have to take all of it. A team can reuse just the Vector layer for an Arrow-native data path, or just the expression evaluator, or the whole operator set. That à-la-carte property is what makes Velox a library rather than a framework.</p>
+
+        <h3>3.2 Vectors — Arrow-compatible, and encoding-aware</h3>
+        <p>The Vector module is the foundation everything else stands on. It is an Arrow-compatible columnar layout, which means zero-copy interop with the broader Arrow ecosystem — but Velox adds encodings and a lazy-materialization pattern that go beyond a plain flat buffer. The four headline encodings:</p>
+        <ul>
+          <li><strong>Flat</strong> — the plain case: a contiguous buffer of values plus a null bitmap.</li>
+          <li><strong>Dictionary</strong> — an array of indices into a smaller values vector. A low-cardinality column (say, a country code repeated across a billion rows) stores each distinct string once and a cheap integer per row.</li>
+          <li><strong>Constant</strong> — a single value standing in for an entire column, for literals and broadcast cases — one value, not <em>N</em> copies.</li>
+          <li><strong>Sequence / RLE</strong> — run-length encoding for long stretches of repeated values.</li>
+        </ul>
+        <figure class="diagram"><svg viewBox="0 0 760 234" role="img" xmlns="http://www.w3.org/2000/svg"><defs><marker id="ahvel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="d-arrow"/></marker><marker id="aavel" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="d-arrow-accent"/></marker></defs><text x="380" y="20" text-anchor="middle" class="d-eyebrow">Dictionary encoding — store each distinct value once</text><text x="120" y="64" text-anchor="middle" class="d-elabel">indices (BIGINT)</text><rect x="220" y="44" width="44" height="34" rx="5" class="d-box"/><text x="242" y="66" text-anchor="middle" class="d-title">2</text><rect x="268" y="44" width="44" height="34" rx="5" class="d-box"/><text x="290" y="66" text-anchor="middle" class="d-title">0</text><rect x="316" y="44" width="44" height="34" rx="5" class="d-box"/><text x="338" y="66" text-anchor="middle" class="d-title">1</text><rect x="364" y="44" width="44" height="34" rx="5" class="d-box"/><text x="386" y="66" text-anchor="middle" class="d-title">0</text><rect x="412" y="44" width="44" height="34" rx="5" class="d-box"/><text x="434" y="66" text-anchor="middle" class="d-title">2</text><rect x="460" y="44" width="44" height="34" rx="5" class="d-box"/><text x="482" y="66" text-anchor="middle" class="d-title">1</text><text x="120" y="166" text-anchor="middle" class="d-elabel">values (VARCHAR)</text><rect x="244" y="146" width="120" height="34" rx="5" class="d-box-accent"/><text x="304" y="168" text-anchor="middle" class="d-title">us-east</text><rect x="372" y="146" width="120" height="34" rx="5" class="d-box-accent"/><text x="432" y="168" text-anchor="middle" class="d-title">us-west</text><rect x="500" y="146" width="80" height="34" rx="5" class="d-box-accent"/><text x="540" y="168" text-anchor="middle" class="d-title">eu</text><line x1="290" y1="78" x2="300" y2="145" class="d-edge" marker-end="url(#ahvel)"/><line x1="338" y1="78" x2="432" y2="145" class="d-edge" marker-end="url(#ahvel)"/><line x1="242" y1="78" x2="540" y2="145" class="d-edge" marker-end="url(#ahvel)"/><text x="380" y="214" text-anchor="middle" class="d-elabel">6 rows, 3 distinct values: store 3 strings once + 6 cheap integers — and filters run on the small dictionary</text></svg><figcaption><b>Encodings earn their keep.</b> A dictionary vector keeps each distinct value once and indexes into it. A predicate like <code>region = 'eu'</code> evaluates against the three-entry dictionary, not the six (or six-billion) rows — and the result stays dictionary-encoded, so the saving propagates down the pipeline.</figcaption></figure>
+        <p>Encodings aren't just a storage trick; they flow through execution. A filter or expression can often evaluate against a dictionary's compact value set and produce another encoded vector, so the savings compound across operators instead of being flattened away at the first step. Combined with lazy materialization — don't decode a column until an operator actually needs it — this is a large part of where Velox's speed comes from.</p>
+
+        <h3>3.3 The expression engine — vectorized, with constant folding and short-circuiting</h3>
+        <p>Velox evaluates whole expression trees over vectors, not row-by-row. An expression like <code>upper(trim(name)) = 'ADA' AND age &gt; 30</code> compiles to a tree the evaluator walks once per batch, applying each function across the vector with SIMD where the function supports it. The engine does the optimizations you'd expect from a real compiler-ish layer: constant folding, common-subexpression elimination, null short-circuiting (skip work on rows already known to be null), and peeling encodings so a function runs on a dictionary's values rather than every row. Functions come in two flavors — a "simple function" API (write scalar logic, get vectorization for free) and a "vectorized function" API (hand-tune the batch loop) — which is how Velox keeps the common case easy and the hot path fast.</p>
+
+        <h3>3.4 The driver/operator model — pull-based vectorized pipelines</h3>
+        <p>Execution is organized as a <code>Task</code> split into pipelines, each run by one or more <code>Driver</code> threads. A driver threads a chain of operators together and pulls data through them a batch at a time: each operator takes a <code>RowVector</code> (a columnar batch) from upstream, does its work, and hands a <code>RowVector</code> downstream. Operators that need to block — a hash join building its table, an aggregation accumulating, an exchange waiting on the network — yield cleanly so the thread can do other work.</p>
+        <figure class="diagram"><svg viewBox="0 0 760 168" role="img" xmlns="http://www.w3.org/2000/svg"><defs><marker id="ahvel2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="d-arrow"/></marker><marker id="aavel2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="d-arrow-accent"/></marker></defs><text x="380" y="20" text-anchor="middle" class="d-eyebrow">A Driver pulls RowVectors through a pipeline of operators</text><rect x="32" y="52" width="150" height="56" rx="8" class="d-box"/><text x="107" y="76" text-anchor="middle" class="d-title">TableScan</text><text x="107" y="94" text-anchor="middle" class="d-sub">ORC · Parquet</text><rect x="214" y="52" width="150" height="56" rx="8" class="d-box"/><text x="289" y="76" text-anchor="middle" class="d-title">FilterProject</text><text x="289" y="94" text-anchor="middle" class="d-sub">vectorized expr</text><rect x="396" y="52" width="150" height="56" rx="8" class="d-box"/><text x="471" y="76" text-anchor="middle" class="d-title">HashAggregation</text><text x="471" y="94" text-anchor="middle" class="d-sub">spills if tight</text><rect x="578" y="52" width="150" height="56" rx="8" class="d-box-accent"/><text x="653" y="76" text-anchor="middle" class="d-title">Output</text><text x="653" y="94" text-anchor="middle" class="d-sub">serialize</text><line x1="182" y1="80" x2="214" y2="80" class="d-edge" marker-end="url(#ahvel2)"/><line x1="364" y1="80" x2="396" y2="80" class="d-edge" marker-end="url(#ahvel2)"/><line x1="546" y1="80" x2="578" y2="80" class="d-edge" marker-end="url(#ahvel2)"/><text x="380" y="146" text-anchor="middle" class="d-elabel">Each edge passes a RowVector (a columnar batch) — pull-based, one batch at a time, with backpressure and spilling</text></svg><figcaption><b>One batch at a time.</b> A driver pulls columnar <code>RowVector</code> batches through the operator chain. Memory pressure is handled where it happens — the hash aggregation (or join) spills to disk under the resource manager's control, rather than OOM-ing the process — which is exactly the behavior engines used to re-implement individually.</figcaption></figure>
+        <p>This is the layer that used to live inside each engine and now lives once, here. The resource manager underneath it — arenas, buffer pools, the spilling and caching primitives — is what makes the operators production-grade rather than textbook: a join that exceeds its memory budget spills instead of crashing, and a hot scan can be served from Velox's async data cache instead of re-reading remote storage.</p>
+
+        <h3>3.5 One library, many engines</h3>
+        <p>The reason Velox matters in practice is the set of systems that now run on it. The same operator and expression code is shared across very different frontends:</p>
+        <figure class="diagram"><svg viewBox="0 0 760 296" role="img" xmlns="http://www.w3.org/2000/svg"><defs><marker id="ahvel3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="d-arrow"/></marker><marker id="aavel3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" class="d-arrow-accent"/></marker></defs><text x="380" y="20" text-anchor="middle" class="d-eyebrow">Frontends parse + optimize · Velox executes · adapters read storage</text><rect x="40" y="36" width="200" height="52" rx="8" class="d-box"/><text x="140" y="60" text-anchor="middle" class="d-title">Presto</text><text x="140" y="78" text-anchor="middle" class="d-sub">Prestissimo (C++ worker)</text><rect x="280" y="36" width="200" height="52" rx="8" class="d-box"/><text x="380" y="60" text-anchor="middle" class="d-title">Apache Spark</text><text x="380" y="78" text-anchor="middle" class="d-sub">via Gluten</text><rect x="520" y="36" width="200" height="52" rx="8" class="d-box"/><text x="620" y="60" text-anchor="middle" class="d-title">Your engine</text><text x="620" y="78" text-anchor="middle" class="d-sub">stream · AI/ML · custom</text><rect x="160" y="128" width="440" height="60" rx="10" class="d-box-accent"/><text x="380" y="153" text-anchor="middle" class="d-title">Velox — composable C++ execution engine</text><text x="380" y="174" text-anchor="middle" class="d-sub">Type · Vector · Expressions · Functions · Operators · Resource mgmt</text><line x1="160" y1="88" x2="300" y2="126" class="d-edge" marker-end="url(#ahvel3)"/><line x1="380" y1="88" x2="380" y2="126" class="d-edge" marker-end="url(#ahvel3)"/><line x1="600" y1="88" x2="460" y2="126" class="d-edge" marker-end="url(#ahvel3)"/><rect x="120" y="226" width="250" height="50" rx="8" class="d-box-2"/><text x="245" y="248" text-anchor="middle" class="d-title">File formats</text><text x="245" y="266" text-anchor="middle" class="d-sub">Parquet · ORC/DWRF · Nimble</text><rect x="390" y="226" width="250" height="50" rx="8" class="d-box-2"/><text x="515" y="248" text-anchor="middle" class="d-title">Storage adapters</text><text x="515" y="266" text-anchor="middle" class="d-sub">S3 · HDFS · GCS · ABFS</text><line x1="320" y1="188" x2="260" y2="224" class="d-edge-accent" marker-end="url(#aavel3)"/><line x1="440" y1="188" x2="500" y2="224" class="d-edge-accent" marker-end="url(#aavel3)"/></svg><figcaption><b>The consolidation, drawn.</b> Each frontend keeps its own SQL surface, optimizer, and distribution — and delegates the actual computation to the same Velox core, which in turn reads through shared format and storage adapters. Optimize Velox once; Presto, Spark-via-Gluten, and any custom engine all get faster together.</figcaption></figure>
+        <p><strong>Prestissimo</strong> replaces Presto's Java workers with C++ workers built on Velox. <strong>Gluten</strong> offloads Spark SQL stages to Velox (the subject of the <a href="./gluten.html">companion post</a>). Meta and partners also use it for stream processing and ML feature engineering. The strategic consequence is what the README's coalition implies: an optimization contributed by Intel for a Presto workload can speed up a Spark job at ByteDance, because it lands in the shared core.</p>
+
+        <h3>3.6 Extensibility — eight ways to specialize</h3>
+        <p>Velox is explicit that integrators will need to specialize it, and it names eight extension points: custom <strong>types</strong>, <strong>simple and vectorized functions</strong>, <strong>aggregate functions</strong>, <strong>window functions</strong>, <strong>operators</strong>, <strong>file formats</strong>, <strong>storage adapters</strong>, and <strong>network serializers</strong>. This is how the same core serves engines with genuinely different semantics: Spark's <code>UnsafeRow</code> wire format and Presto's <code>PrestoPage</code> are both just registered serializers; Spark-semantic and Presto-semantic functions are both just registered function sets. The extension surface is the product — without it, "reusable across engines" would be a slogan.</p>
+
+        <h3>3.7 Project health — broad backing, fast main, sharp edges</h3>
+        <p>Velox is unusually well-supported for an infrastructure library: created by Meta and developed in partnership with IBM/Ahana, Intel, Voltron Data, Microsoft, ByteDance, and others — a coalition that de-risks the bus-factor question most open-source engines carry. The flip side is engineering reality: there are <em>no tagged releases</em>, so you build from a fast-moving <code>main</code>; the CPU must support modern SIMD (<code>bmi</code>, <code>bmi2</code>, <code>f16c</code>, with <code>avx</code>/<code>avx2</code>/<code>sse</code> on Intel and Neon on ARM used where available); and the issue tracker carries 1,500+ open items, which is the texture of a large, actively pushed C++ codebase rather than a sign of neglect. The active blog (SIMD Parquet decoding, FlatMapVector for AI/ML preprocessing) shows where the frontier is moving: lower-level kernel performance and AI data pipelines.</p>
+
+        <h2>4 · Result — what you get if you build on Velox</h2>
+        <p>Each promise mapped to its delivered state.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Promise</th><th>Delivered today</th><th>Honest grade</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Reusable execution components</td><td>Vector, expressions, operators, I/O — usable à la carte</td><td>Strong — the core thesis works</td></tr>
+              <tr><td>Powers real engines</td><td>Prestissimo (Presto) + Spark via Gluten, in production</td><td>Strong — not a demo</td></tr>
+              <tr><td>High performance</td><td>Vectorized + SIMD + encoding-aware + spilling</td><td>Strong, but workload-dependent</td></tr>
+              <tr><td>Consistent semantics</td><td>Separate Presto- and Spark-semantic function sets</td><td>Real, and the bulk of integration effort</td></tr>
+              <tr><td>Usable by end users directly</td><td>No SQL parser / optimizer / dataframe by design</td><td>Out of scope — integrate, don't "run"</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The win that matters most in production is the one that doesn't show up in a single benchmark: you stop maintaining your own execution engine. A team integrating Velox trades the cost of writing and tuning vectorized joins, spilling aggregations, and Parquet readers for the (real, non-trivial) cost of a C++ integration against a moving target. For an organization running analytics at scale, that's usually a good trade — which is precisely why the consortium exists.</p>
+        <p>The caveats are equally concrete. Velox is a heavy dependency: a C++ build, SIMD requirements, and an API that tracks <code>main</code> rather than a stable release line. It assumes you already have a planner — if you don't, Velox gives you nothing user-facing on its own. And matching your engine's exact semantics (especially around nulls, overflow, decimals, and timestamps) is detailed, unglamorous work that the library enables but does not eliminate.</p>
+
+        <h2>5 · Takeaways — how to read Velox in 2026</h2>
+        <p>Five calibrated conclusions for an engineer evaluating it.</p>
+        <h4>The real product is consolidation</h4>
+        <p>Velox's value isn't a benchmark; it's that execution becomes a shared component. Judge it by the coalition building on it and by "one fix helps everyone," not by any single speedup figure.</p>
+        <h4>It's a library for engine builders</h4>
+        <p>If you're integrating or accelerating a compute engine in C++, this is the substrate. If you want to run SQL, you want Prestissimo or <a href="./gluten.html">Gluten</a> — you'll get Velox underneath without touching it.</p>
+        <h4>Encodings and laziness are where the speed lives</h4>
+        <p>Dictionary/constant/RLE vectors plus lazy materialization let work shrink as it flows through the pipeline. Understanding that model is the key to understanding Velox's performance.</p>
+        <h4>Budget for "build from main" and SIMD</h4>
+        <p>No tagged releases means you pin a commit and track a moving API; the SIMD floor (<code>bmi2</code>, <code>f16c</code>) means older or constrained CPUs are out. These are the genuine costs of entry.</p>
+        <h4>Semantics are the integration</h4>
+        <p>The two function namespaces exist because "fast" is easy and "bit-for-bit like Spark/Presto" is hard. Plan most of your integration effort around matching reference semantics, not around performance.</p>
+
+        <h2>6 · vs Alternatives</h2>
+        <p>Where Velox sits in the 2026 "shared execution layer" landscape.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Option</th><th>What it is</th><th>Relative to Velox</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>Velox</td><td>Composable C++ execution library</td><td>This report. The substrate; no SQL/optimizer; broad industry backing</td></tr>
+              <tr><td>Apache DataFusion</td><td>Embeddable Rust engine (SQL + planner + execution)</td><td>Higher-level and Rust; includes a planner. Velox is lower-level C++, planner-free</td></tr>
+              <tr><td>Apache Arrow + Acero</td><td>Columnar format + a streaming execution kernel</td><td>Velox is Arrow-compatible but a fuller, faster engine with spilling/encodings</td></tr>
+              <tr><td>Photon (Databricks)</td><td>Proprietary C++ vectorized engine</td><td>Closed + Databricks-locked. Velox is open and reusable across engines</td></tr>
+              <tr><td>ClickHouse (as a library)</td><td>Full columnar DBMS; Gluten's other backend</td><td>A whole database, not a factored-out library; harder to embed à la carte</td></tr>
+              <tr><td>Hand-rolled engine operators</td><td>What every system used to build in-house</td><td>The status quo Velox replaces — one shared core instead of N reinventions</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <nav class="post-nav">
+        <a href="../blog.html">← All writing</a>
+        <a href="./gluten.html">Gluten →</a>
+      </nav>
+    </article>
+  </main>
+
+  <footer class="site-footer">
+    <div class="inner">
+      <span>© 2026 Ethan</span>
+      <span>built static · no framework</span>
+      <a href="https://github.com/AgenticSpark">github →</a>
+    </div>
+  </footer>
+  <script src="../assets/js/site.js"></script>
+</body>
+</html>
