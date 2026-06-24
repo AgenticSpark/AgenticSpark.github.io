@@ -283,7 +283,7 @@ vllm serve meta-llama/Llama-3.1-70B-Instruct \
         <h4>Default to it for serving open weights</h4>
         <p>For throughput-oriented serving of open models behind an OpenAI API, vLLM is the safe default. The burden of proof is on alternatives to beat it on your specific workload.</p>
         <h4>Match the tool to the bottleneck</h4>
-        <p>Throughput-bound, many users, shared prompts → vLLM shines. Single-stream lowest-latency on one fixed model/GPU → also weigh a compiled engine (TensorRT-LLM) and measure.</p>
+        <p>If you're throughput-bound — many users, shared prompts — vLLM shines. For single-stream lowest latency on one fixed model and GPU, also weigh a compiled engine (TensorRT-LLM) and measure.</p>
         <h4>Treat the multipliers as ceilings</h4>
         <p>"24× / Nx" are real headline numbers under specific conditions. Your mileage is set by context length, concurrency, model size, and hardware — measure it.</p>
 

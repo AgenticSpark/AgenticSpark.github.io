@@ -127,7 +127,7 @@ for batch in loader:
         </ol>
 
         <h2>3 · Action — what's actually in the engine</h2>
-        <p>Six lenses: ZeRO stages, offload, 3D parallelism, kernel/precision mechanics, inference, and the RLHF branch of the project.</p>
+        <p>Six lenses: ZeRO stages, offload, 3D parallelism, kernel/precision mechanics, inference, and the RLHF (reinforcement learning from human feedback) branch of the project.</p>
 
         <h3>3.1 ZeRO stages 1/2/3 — partition the state, not the idea of the model</h3>
         <p>ZeRO is incremental by design. Stage 1 partitions optimizer states across ranks, so each process updates only its shard. Stage 2 also partitions reduced gradients, matching gradients to the optimizer-state shard that needs them. Stage 3 partitions the model parameters themselves, gathering parameters for forward/backward use and releasing them back to shards afterward. Hugging Face's current docs summarize the same progression and warn that each additional stage reduces memory at the cost of more communication.</p>
@@ -163,7 +163,7 @@ for batch in loader:
         <rect x="430" y="242" width="90" height="28"  rx="4" class="d-box-2"/><text x="475" y="234" text-anchor="middle" class="d-title">16.6 GB</text><text x="475" y="290" text-anchor="middle" class="d-sub">ZeRO-2</text>
         <rect x="590" y="259" width="90" height="11"  rx="4" class="d-box-accent"/><text x="635" y="251" text-anchor="middle" class="d-title">1.9 GB</text><text x="635" y="290" text-anchor="middle" class="d-sub">ZeRO-3</text>
         </svg><figcaption><b>Why ZeRO became the brand.</b> Partitioning optimizer state (stage 1), then gradients (stage 2), then parameters (stage 3) drops the per-GPU footprint from 120 GB of replicated state toward <code>16·Ψ/N</code> — about 1.9 GB here. The figures follow the original ZeRO paper's 7.5B / 64-GPU example: the saving is real, the added all-gather traffic is the price.</figcaption></figure>
-        <p>The pattern is the point: ZeRO-1 shards the 12-byte optimizer state, ZeRO-2 adds the 2-byte gradients, ZeRO-3 adds the 2-byte parameters, so the per-GPU bill falls toward <code>16·Ψ / N</code>. What it trades for is communication — ZeRO-3 must all-gather each layer's parameters just in time for its forward and backward pass, then release them again.</p>
+        <p>The pattern is the point: ZeRO-1 shards the 12-byte optimizer state, ZeRO-2 adds the 2-byte gradients, ZeRO-3 adds the 2-byte parameters, so the per-GPU bill falls toward <code>16·Ψ / N</code> (Ψ = the model's parameter count, N = the number of GPUs). What it trades for is communication — ZeRO-3 must all-gather each layer's parameters just in time for its forward and backward pass, then release them again.</p>
 
         <h3>3.2 ZeRO-Offload &amp; Infinity — capacity by spending bandwidth</h3>
         <p>ZeRO-Offload moves optimizer memory and compute from GPU to host CPU, using DeepSpeedCPUAdam to keep CPU optimizer work from becoming completely dominant. The official tutorial frames a 10B GPT-2 run on a single 32GB V100 as the motivating example. That is a capacity story, not a free-speed story: CPU memory is larger, PCIe/NVLink transfer is slower than HBM, and host-core binding can matter.</p>
